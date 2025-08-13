@@ -6,29 +6,49 @@ export default function BeefreeEditor() {
 
   useEffect(() => {
     async function initializeEditor() {
-      // Beefree SDK configuration
-      const beeConfig = {
-        container: 'beefree-react-demo',
-        language: 'en-US',
-        onSave: (pageJson: string, pageHtml: string, ampHtml: string | null, templateVersion: number, language: string | null) => {
-          console.log('Saved!', { pageJson, pageHtml, ampHtml, templateVersion, language });
-        },
-        onError: (error: unknown) => {
-          console.error('Error:', error);
-        }
-      };
+      try {
+        // Beefree SDK configuration
+        const beeConfig = {
+          container: 'beefree-react-demo',
+          language: 'en-US',
+          onSave: (pageJson: string, pageHtml: string, ampHtml: string | null, templateVersion: number, language: string | null) => {
+            console.log('Saved!', { pageJson, pageHtml, ampHtml, templateVersion, language });
+          },
+          onError: (error: unknown) => {
+            console.error('Error:', error);
+          }
+        };
 
-      // Get a token from your backend
-      const response = await fetch('http://localhost:3001/proxy/bee-auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid: 'demo-user' })
-      })
-      const token = await response.json();
+        // Load provided template from public folder
+        const templateJson = await fetch('/black-friday-template.json')
+          .then((r) => (r.ok ? r.json() : undefined))
+          .catch(() => undefined);
 
-      // Initialize the editor
-      const bee = new BeefreeSDK(token);
-      bee.start(beeConfig, {});
+        // Get a token from your backend
+        const response = await fetch(import.meta.env.VITE_BEE_AUTH_URL || 'http://localhost:3001/proxy/bee-auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid: 'demo-user' })
+        });
+        const token = await response.json();
+
+        // Ensure token includes v2 flag per best practices
+        const v2Token = { ...token, v2: true };
+
+        // Initialize the editor using the constructor and start promise
+        const BeefreeSDKInstance = new BeefreeSDK(v2Token);
+        BeefreeSDKInstance
+          .start(beeConfig, templateJson, '', { shared: false })
+          .then(() => {
+            // Editor initialized
+            console.log('Beefree SDK initialized successfully');
+          })
+          .catch((err: unknown) => {
+            console.error('Error during start():', err);
+          });
+      } catch (error) {
+        console.error('error during initialization --> ', error);
+      }
     }
 
     initializeEditor();

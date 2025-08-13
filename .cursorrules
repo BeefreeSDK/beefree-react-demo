@@ -95,7 +95,8 @@ Guidelines and best practices for building applications with [Beefree SDK](https
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ uid: 'demo-user' })
-  }).then(res => res.json());
+  });
+  const token = await response.json();
   ```
 
 ## Container Setup Guidelines
@@ -215,6 +216,19 @@ Guidelines and best practices for building applications with [Beefree SDK](https
 
 ## SDK Initialization Guidelines
 
+### Important: Initialization best practice (module builds)
+Do not use `BeefreeSDK.create` in React/Next.js or any module/bundler environment. Instantiate with the constructor and call `start()` as a promise:
+```typescript
+try {
+  const json = await getTemplate();
+  const token = await getToken();
+  const sdk = new BeefreeSDK({ ...token, v2: true });
+  await sdk.start(beeConfig, json, '', { shared: false });
+} catch (error) {
+  console.error('error during initialization --> ', error);
+}
+```
+
 ### Basic Initialization
 - Initialize the Beefree SDK with proper error handling:
   ```typescript
@@ -230,31 +244,24 @@ Guidelines and best practices for building applications with [Beefree SDK](https
   ```
 
 ### React Integration
-- For React applications, the following code snippet shows an example using useEffect for initialization:
+- For React applications, initialize on mount and use the constructor + start promise:
   ```typescript
   useEffect(() => {
     async function initializeEditor() {
-      const beeConfig = {
-        container: 'beefree-react-demo',
-        language: 'en-US',
-        onSave: (pageJson: string, pageHtml: string, ampHtml: string | null, templateVersion: number, language: string | null) => {
-          console.log('Saved!', { pageJson, pageHtml, ampHtml, templateVersion, language });
-        },
-        onError: (error: unknown) => {
-          console.error('Error:', error);
-        }
-      };
-
-      const token = await fetch('http://localhost:3001/proxy/bee-auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid: 'demo-user' })
-      }).then(res => res.json());
-
-      const bee = new BeefreeSDK(token);
-      bee.start(beeConfig, {});
+      try {
+        const beeConfig = { container: 'beefree-react-demo', language: 'en-US' };
+        const token = await fetch('http://localhost:3001/proxy/bee-auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid: 'demo-user' })
+        });
+        const token = await response.json();
+        const sdk = new BeefreeSDK({ ...token, v2: true });
+        await sdk.start(beeConfig, undefined, '', { shared: false });
+      } catch (error) {
+        console.error('error during initialization --> ', error);
+      }
     }
-
     initializeEditor();
   }, []);
   ```
@@ -268,12 +275,12 @@ Guidelines and best practices for building applications with [Beefree SDK](https
   const selectedTemplate = JSON.parse(localStorage.getItem('currentEmailData'));
   
   if (selectedTemplate) {
-    beefreeSDKInstance.start(selectedTemplate);
+    beefreeSDKInstance.start(beeConfig, selectedTemplate);
     console.log('Loaded template from localStorage');
   } else {
     // Start with empty template
-              beefreeSDKInstance.start();
-          console.log('Started with empty template');
+    beefreeSDKInstance.start(beeConfig);
+    console.log('Started with empty template');
   }
   ```
 
@@ -323,7 +330,7 @@ Guidelines and best practices for building applications with [Beefree SDK](https
 - Load imported templates into the Beefree SDK:
   ```typescript
   const importedTemplate = await importHtmlTemplate(htmlContent);
-  beefreeSDK.start(importedTemplate);
+  beefreeSDKInstance.start(beeConfig, importedTemplate);
   ```
 
 ## Error Handling Guidelines
@@ -469,7 +476,8 @@ export default function BeefreeEditor() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uid: 'demo-user' })
-      }).then(res => res.json());
+      });
+      const token = await response.json();
 
       const bee = new BeefreeSDK(token);
       bee.start(beeConfig, {});

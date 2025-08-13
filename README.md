@@ -10,6 +10,35 @@ description: >-
 
 This Quickstart Guide shows you step by step how to embed Beefree SDK’s Email Builder into a React application using the [`/loginV2`](../getting-started/readme/installation/authorization-process-in-detail) authorization process. By the end of the guide, you'll have a functional React app running locally, with Beefree SDK's no-code email builder integrated and properly authenticated—following best practices for React development.
 
+### Important: Initialization best practice (module builds)
+
+Do not use `BeefreeSDK.create` in React/Next.js or any module/bundler environment. That legacy API applies to the global script-tag build. In modern environments, instantiate with the constructor and call `start()` as a promise:
+
+```ts
+try {
+  const json = await getTemplate(); // your function to get the template
+  const token = await getToken();   // your function to get the token from BE
+  const BeefreeSDKInstance = new BeefreeSDK({ ...token, v2: true });
+  BeefreeSDKInstance
+    .start(beeConfig, json, '', { shared: false })
+    .then((instance) => {
+      // Do things here after the editor is initialized
+    });
+} catch (error) {
+  console.error('error during initialization --> ', error);
+}
+// token object example
+// {
+//   access_token: '<JWT_ACCESS_TOKEN>',
+//   v2: true,
+// }
+```
+
+Notes:
+- `create()` is not available from `@beefree.io/sdk` ESM/CJS module imports; use the constructor.
+- Ensure you pass the entire auth response and set `v2: true` on the token object.
+- The `container` in `beeConfig` should be a string id of a DOM element (e.g., `'beefree-react-demo'`).
+
 ## **Prerequisites**
 
 Prior to getting started, ensure you:
@@ -46,7 +75,23 @@ Run the following command in your terminal to install the official[ Beefree SDK 
 npm install @beefree.io/sdk
 ```
 
-Now that the package is installed, the next step is to create a simple user interface (UI) to embed the builder within.&#x20;
+Now that the package is installed, the next step is to create a simple user interface (UI) to embed the builder within.
+
+### Environment variables
+
+Create a `.env` from the template below (save as `.env.example`, then copy to `.env` and fill in values):
+
+```env
+# Frontend
+VITE_BEE_AUTH_URL=http://localhost:3001/proxy/bee-auth
+
+# Proxy server
+PORT=3001
+BEE_CLIENT_ID=your_client_id_here
+BEE_CLIENT_SECRET=your_client_secret_here
+```
+
+The app reads `VITE_BEE_AUTH_URL` on the client to reach your proxy, and the proxy reads `PORT`, `BEE_CLIENT_ID`, and `BEE_CLIENT_SECRET`.
 
 {% hint style="info" %}
 **Note (React and Beefree SDK Interaction):** The `@beefree.io/sdk` package provides a React-compatible wrapper for the Beefree builder. React manages the UI lifecycle, while the SDK handles the email builder logic.
@@ -111,28 +156,50 @@ export default function BeefreeEditor() {
 
   useEffect(() => {
     async function initializeEditor() {
-      // Beefree SDK configuration
-      const beeConfig = {
-        container: 'beefree-react-demo',
-        language: 'en-US',
-        onSave: (pageJson: string, pageHtml: string, ampHtml: string | null, templateVersion: number, language: string | null) => {
-          console.log('Saved!', { pageJson, pageHtml, ampHtml, templateVersion, language });
-        },
-        onError: (error: unknown) => {
-          console.error('Error:', error);
-        }
-      };
+      try {
+        // Beefree SDK configuration
+        const beeConfig = {
+          container: 'beefree-react-demo',
+          language: 'en-US',
+          onSave: (pageJson: string, pageHtml: string, ampHtml: string | null, templateVersion: number, language: string | null) => {
+            console.log('Saved!', { pageJson, pageHtml, ampHtml, templateVersion, language });
+          },
+          onError: (error: unknown) => {
+            console.error('Error:', error);
+          }
+        };
 
-      // Get a token from your backend
-      const token = await fetch('http://localhost:3001/proxy/bee-auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid: 'demo-user' })
-      }).then(res => res.json());
+        // Optional: load a template (e.g., from localStorage) or leave undefined to start empty
+        const templateJson = (() => {
+          try {
+            const stored = localStorage.getItem('currentEmailData');
+            return stored ? JSON.parse(stored) : undefined;
+          } catch {
+            return undefined;
+          }
+        })();
 
-      // Initialize the editor
-      const bee = new BeefreeSDK(token);
-      bee.start(beeConfig, {});
+        // Get a token from your backend
+        const response = await fetch(import.meta.env.VITE_BEE_AUTH_URL || 'http://localhost:3001/proxy/bee-auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid: 'demo-user' })
+        });
+        const token = await response.json();
+
+        // Initialize the editor with v2 token and promise API
+        const BeefreeSDKInstance = new BeefreeSDK({ ...token, v2: true });
+        BeefreeSDKInstance
+          .start(beeConfig, templateJson, '', { shared: false })
+          .then(() => {
+            console.log('Beefree SDK initialized successfully');
+          })
+          .catch((err: unknown) => {
+            console.error('Error during start():', err);
+          });
+      } catch (error) {
+        console.error('error during initialization --> ', error);
+      }
     }
 
     initializeEditor();
@@ -198,6 +265,45 @@ useEffect(() => {
 
 * **`onSave`**: Called when a user saves, returning `JSON` (template structure) and `HTML` (rendered output).
 * **`onError`**: Handles errors (e.g., token expiration).
+
+### Next.js specifics
+
+In Next.js, initialize the SDK only on the client side. Example client component:
+
+```tsx
+'use client';
+import { useEffect } from 'react';
+import BeefreeSDK from '@beefree.io/sdk';
+
+export default function EditorClientOnly() {
+  useEffect(() => {
+    let disposed = false;
+    (async () => {
+      const beeConfig = { container: 'beefree-react-demo' };
+      const response = await fetch('/api/bee-auth', { method: 'POST' });
+      const token = await response.json();
+      if (disposed) return;
+      const sdk = new BeefreeSDK({ ...token, v2: true });
+      await sdk.start(beeConfig, undefined, '', { shared: false });
+    })();
+    return () => { disposed = true; };
+  }, []);
+  return <div id="beefree-react-demo" style={{ height: 600 }} />;
+}
+```
+
+### Popup builder example (custom width/height)
+
+Control the size via container styles and user input:
+
+```tsx
+const [size, setSize] = useState({ w: 900, h: 600 });
+const style = { width: size.w, height: size.h, margin: '0 auto', border: '1px solid #ddd' } as const;
+// ... in JSX
+<input type="number" value={size.w} onChange={e => setSize(s => ({ ...s, w: Number(e.target.value) }))} />
+<input type="number" value={size.h} onChange={e => setSize(s => ({ ...s, h: Number(e.target.value) }))} />
+<div id="beefree-react-demo" style={style} />
+```
 
 ### **5. Set Up the Proxy Server (V2 Auth)**
 
