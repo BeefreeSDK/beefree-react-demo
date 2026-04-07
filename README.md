@@ -1,3 +1,13 @@
+> [!WARNING]
+> **⛔ This repository has been deprecated**
+>
+> Beefree SDK now has a new React Wrapper, and this project is no longer updated/maintained. The sample project has moved to the new repository:
+>
+> **👉 [BeefreeSDK/react-email-builder](https://github.com/BeefreeSDK/react-email-builder/tree/main/example)**
+>
+> Please use the new repository for all future issues, pull requests, and contributions.
+> This repo is archived and will not receive any further updates.
+
 # React No-code Email Builder
 
 <details>
